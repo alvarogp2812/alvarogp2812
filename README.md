@@ -53,3 +53,10 @@ Ingeniero Informático (UC3M), interesado en la inteligencia artificial y su apl
 ---
 
 Galapagar, Madrid | Español (nativo), Inglés (C1)
+
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alvgarciap/alvgarciap/output/dino-contribution-graph-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alvgarciap/alvgarciap/output/dino-contribution-graph.svg">
+  <img alt="dino contribution graph" src="https://raw.githubusercontent.com/alvgarciap/alvgarciap/output/dino-contribution-graph.svg">
+</picture>
