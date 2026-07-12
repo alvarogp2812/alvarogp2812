@@ -116,12 +116,12 @@ function buildSvg(weeks, theme) {
   const COLS = weeks.length;
   const ROWS = 7;
 
-  const marginX = 6;
-  const gridTop = 6;
+  const marginX = 8;
+  const gridTop = 10;
   const gridHeight = ROWS * STEP - GAP;
-  const trackY = gridTop + gridHeight + 34; // baseline for the dino/cacti
+  const trackY = gridTop + gridHeight + 50; // baseline for the dino/cacti, extra room for a bigger sprite
   const width = marginX * 2 + COLS * STEP - GAP;
-  const height = trackY + 20;
+  const height = trackY + 14;
 
   // --- heatmap grid ---
   let gridSvg = "";
@@ -133,39 +133,55 @@ function buildSvg(weeks, theme) {
     });
   });
 
-  // --- obstacles: one cactus per week whose max day-level is >= 2 ---
-  const obstacles = [];
+  // --- obstacles: only the standout weeks (level >= 3), spaced apart so
+  // they never crowd each other. This keeps the track readable instead of
+  // a wall of cacti. ---
+  const trackWidth = COLS * STEP - GAP;
+  const MIN_GAP_PX = Math.max(36, trackWidth * 0.045); // minimum distance between two cacti
+  const MAX_OBSTACLES = 12;
+
+  const candidates = [];
   weeks.forEach((w, wi) => {
     const maxLevel = Math.max(...w.contributionDays.map((d) => d.level));
-    if (maxLevel >= 2) {
-      const x = marginX + wi * STEP + CELL / 2;
-      obstacles.push({ x, level: maxLevel });
+    if (maxLevel >= 3) {
+      candidates.push({ x: marginX + wi * STEP + CELL / 2, level: maxLevel });
     }
   });
-  // Cap the number of obstacles so the animation stays readable.
-  const MAX_OBSTACLES = 24;
-  const sampledObstacles =
-    obstacles.length <= MAX_OBSTACLES
-      ? obstacles
-      : obstacles.filter((_, i) => i % Math.ceil(obstacles.length / MAX_OBSTACLES) === 0);
 
+  // Greedily keep the strongest weeks, enforcing minimum spacing.
+  candidates.sort((a, b) => b.level - a.level || a.x - b.x);
+  const chosen = [];
+  for (const c of candidates) {
+    if (chosen.length >= MAX_OBSTACLES) break;
+    if (chosen.every((o) => Math.abs(o.x - c.x) >= MIN_GAP_PX)) chosen.push(c);
+  }
+  const sampledObstacles = chosen.sort((a, b) => a.x - b.x);
+
+  // --- classic saguaro-style cactus, one or two arms depending on level ---
   let cactusSvg = "";
-  sampledObstacles.forEach((o, i) => {
-    const h = 10 + o.level * 4;
-    const w2 = 5 + o.level * 1.5;
+  sampledObstacles.forEach((o) => {
+    const h = 20 + (o.level - 3) * 8; // level 3 -> 20px, level 4 -> 28px
+    const stemW = 6;
+    const armW = 5;
+    const twoArms = o.level >= 4;
     cactusSvg += `
-      <g transform="translate(${o.x - w2 / 2}, ${trackY - h})" fill="${theme.cactus}">
-        <rect x="0" y="0" width="${w2}" height="${h}" rx="1.5"/>
-        <rect x="${-w2 * 0.6}" y="${h * 0.25}" width="${w2 * 0.6}" height="${Math.max(3, h * 0.28)}" rx="1.5"/>
-        <rect x="${w2}" y="${h * 0.4}" width="${w2 * 0.6}" height="${Math.max(3, h * 0.28)}" rx="1.5"/>
+      <g transform="translate(${o.x}, ${trackY - h})" fill="${theme.cactus}">
+        <rect x="${-stemW / 2}" y="0" width="${stemW}" height="${h}" rx="2.5"/>
+        <rect x="${-stemW / 2 - armW}" y="${h * 0.32}" width="${armW}" height="${armW * 1.6}" rx="2"/>
+        <rect x="${-stemW / 2 - armW}" y="${h * 0.32 - armW * 1.4}" width="2.4" height="${armW * 1.4 + 2}" rx="1.2"/>
+        ${
+          twoArms
+            ? `<rect x="${stemW / 2}" y="${h * 0.5}" width="${armW}" height="${armW * 1.6}" rx="2"/>
+               <rect x="${stemW / 2 + armW - 2.4}" y="${h * 0.5 - armW * 1.3}" width="2.4" height="${armW * 1.3 + 2}" rx="1.2"/>`
+            : ""
+        }
       </g>`;
   });
 
-  const trackWidth = COLS * STEP - GAP;
-  const totalDuration = Math.max(8, Math.round(COLS * 0.35)); // seconds, one lap
+  const totalDuration = Math.max(10, Math.round(COLS * 0.4)); // seconds, one lap
 
   // --- jump keyframes synced to obstacle positions ---
-  const jumpHeight = 16;
+  const jumpHeight = 26;
   const halfJumpFrac = 0.018; // fraction of the lap spent airborne, per side
 
   let keyTimes = [0];
@@ -189,21 +205,51 @@ function buildSvg(weeks, theme) {
     values.push("0");
   }
 
-  // --- dino sprite (simple pixel-style, two-frame running legs) ---
+  // --- dino sprite: a single silhouette path (body/head/tail), an eye
+  // punched out, and two alternating leg shapes for a running gait. ---
+  const eyeColor = theme.bg === "transparent" ? (theme === THEMES.dark ? "#0d1117" : "#ffffff") : theme.bg;
+
+  const dinoBody = `
+    M 4 34
+    L 4 22
+    C 4 16 8 12 14 12
+    L 14 6
+    C 14 3 16 1 19 1
+    C 21 1 22 2 22 4
+    L 22 12
+    L 30 12
+    C 33 12 35 14 35 17
+    L 35 20
+    L 39 20
+    L 39 24
+    L 35 24
+    L 35 30
+    C 35 32 34 34 32 34
+    L 27 34
+    L 27 27
+    L 15 27
+    L 15 34
+    Z`;
+
   const dino = `
-    <g id="dino" transform="translate(0,${trackY})">
-      <g transform="translate(0,-24)" fill="${theme.dino}">
-        <rect x="6" y="0" width="16" height="10"/>
-        <rect x="14" y="-6" width="10" height="6"/>
-        <rect x="20" y="-6" width="4" height="3"/>
-        <rect x="0" y="6" width="10" height="10"/>
-        <rect x="2" y="16" width="4" height="6">
-          <animate attributeName="height" values="6;1;6" keyTimes="0;0.5;1" dur="0.28s" repeatCount="indefinite"/>
-        </rect>
-        <rect x="10" y="16" width="4" height="6">
-          <animate attributeName="height" values="1;6;1" keyTimes="0;0.5;1" dur="0.28s" repeatCount="indefinite"/>
-        </rect>
-        <rect x="23" y="3" width="3" height="3" fill="${theme.bg === "transparent" ? "#ffffff00" : theme.bg}" opacity="0"/>
+    <g id="dino" transform="translate(0,${trackY - 40})">
+      <g fill="${theme.dino}">
+        <path d="${dinoBody}"/>
+        <circle cx="27" cy="8" r="1.6" fill="${eyeColor}"/>
+        <g>
+          <path d="M 12 34 L 12 40 L 17 40 L 17 36 Z">
+            <animate attributeName="d" dur="0.3s" repeatCount="indefinite"
+              values="M 12 34 L 12 40 L 17 40 L 17 36 Z;
+                      M 12 34 L 10 39 L 15 40 L 17 35 Z;
+                      M 12 34 L 12 40 L 17 40 L 17 36 Z"/>
+          </path>
+          <path d="M 22 34 L 20 40 L 25 40 L 25 34 Z">
+            <animate attributeName="d" dur="0.3s" repeatCount="indefinite"
+              values="M 22 34 L 20 40 L 25 40 L 25 34 Z;
+                      M 22 34 L 22 40 L 27 40 L 27 36 Z;
+                      M 22 34 L 20 40 L 25 40 L 25 34 Z"/>
+          </path>
+        </g>
       </g>
     </g>`;
 
